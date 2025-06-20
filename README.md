@@ -4,6 +4,8 @@
 
 ## 🎯 **TỔNG QUAN DỰ ÁN**
 
+![image](https://github.com/user-attachments/assets/3e9cbba9-7b91-4946-83c8-f241946aa747)
+
 ### **Tên dự án:** FindBot - Hệ thống định vị siêu thị thông minh
 
 ### **Thương hiệu:** NGON LUA PTIT
