@@ -3,7 +3,8 @@ import math
 import time
 from supermarket_board import supermarket_layout, PRODUCT_CATEGORIES, get_category_by_key, get_shelf_center
 from enhanced_pathfinding import EnhancedPathFinder
-import pyttsx3
+from tts_manager import TTSManager
+import unicodedata
 
 # Initialize Pygame
 pygame.init()
@@ -100,20 +101,8 @@ class FinalSupermarketFindBot:
         # Initialize last_direction
         self.last_direction = (0, 0)
         
-        # Initialize TTS
-        try:
-            self.tts_engine = pyttsx3.init()
-            voices = self.tts_engine.getProperty('voices')
-            for voice in voices:
-                if 'vi' in voice.languages or 'Vietnamese' in voice.name:  # Check for Vietnamese voice
-                    self.tts_engine.setProperty('voice', voice.id)
-                    break  # Use the first matching voice
-        except ImportError:
-            print("TTS library not available, install pyttsx3")
-            self.tts_engine = None
-        except Exception as e:
-            print(f"TTS initialization error: {e}")
-            self.tts_engine = None
+        # Text-to-speech subsystem (Vietnamese support)
+        self.tts = TTSManager()
         
         # Add variables for text input
         self.input_text = ''  # To store user input
@@ -431,8 +420,9 @@ class FinalSupermarketFindBot:
         y_offset += 22
 
         if self.current_path and len(self.current_path) > 1:
-            directions = self.generate_directions()
-            for i, direction in enumerate(directions[:6]):  # Show max 6 steps
+            directions_full = self.generate_directions()
+            directions_display = [self._strip_accents(d) for d in directions_full]
+            for i, direction in enumerate(directions_display[:6]):  # Show max 6 steps
                 step_text = f"{i+1}. {direction}"
                 if len(step_text) > 35:
                     step_text = step_text[:32] + "..."
@@ -442,8 +432,8 @@ class FinalSupermarketFindBot:
                 self.screen.blit(text, (panel_x + 5, y_offset))
                 y_offset += 16
             
-            if len(directions) > 6:
-                more_text = f"... va {len(directions) - 6} buoc nua"
+            if len(directions_display) > 6:
+                more_text = f"... va {len(directions_display) - 6} buoc nua"
                 text = self.font_small.render(more_text, True, GRAY)
                 self.screen.blit(text, (panel_x + 5, y_offset))
         else:
@@ -520,20 +510,22 @@ class FinalSupermarketFindBot:
             self.sound_manager.play_sound('success')
             print(f"Tim thay duong den Ke {info['shelf_id']} - {info['name']} - Khoang cach: {distance:.1f} buoc")
             
-            if self.tts_engine:
-                directions = self.generate_directions()
-                for direction in directions:
-                    self.tts_engine.say(direction)
-                    self.tts_engine.runAndWait()
+            if self.tts.is_available():
+                for sentence in self.generate_directions():
+                    self.tts.speak(sentence)
         else:
             self.current_path = []
             self.sound_manager.play_sound('error')
             print(f"Khong tim thay duong den Ke {info['shelf_id']} - {info['name']}")
     
+    def _strip_accents(self, text: str) -> str:
+        """Remove Vietnamese diacritics for display/text output."""
+        return ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
+
     def generate_directions(self):
         """Generate step-by-step text directions with proper turn detection"""
         if not self.current_path or len(self.current_path) < 2:
-            return []
+            return ["Bạn đã đến nơi!"]
         
         directions = []
         
@@ -556,10 +548,11 @@ class FinalSupermarketFindBot:
                 path_directions.append("LEN")
         
         if not path_directions:
-            return ["Da den noi!!!"]
+            return ["Bạn đã đến nơi!"]
         
         # Group consecutive same directions
         i = 0
+        step = 1
         while i < len(path_directions):
             current_dir = path_directions[i]
             count = 1
@@ -572,33 +565,34 @@ class FinalSupermarketFindBot:
             if i == 0:
                 # First movement
                 if current_dir == "LEN":
-                    directions.append(f"Di thang {count} buoc")
+                    directions.append(f"Bước {step}: Đi thẳng {count} bước")
                 elif current_dir == "XUONG":
-                    directions.append(f"Di thang {count} buoc")
+                    directions.append(f"Bước {step}: Đi thẳng {count} bước")
                 elif current_dir == "TRAI":
-                    directions.append(f"Re trai {count} buoc")
+                    directions.append(f"Bước {step}: Re trai {count} bước")
                 elif current_dir == "PHAI":
-                    directions.append(f"Re phai {count} buoc")
+                    directions.append(f"Bước {step}: Re phai {count} bước")
             else:
                 # Check if direction changed (turn)
                 prev_dir = path_directions[i - 1]
                 if current_dir != prev_dir:
                     # This is a turn
                     if current_dir == "TRAI":
-                        directions.append(f"Re trai {count} buoc")
+                        directions.append(f"Bước {step}: Re trai {count} bước")
                     elif current_dir == "PHAI":
-                        directions.append(f"Re phai {count} buoc")
+                        directions.append(f"Bước {step}: Re phai {count} bước")
                     elif current_dir == "LEN":
-                        directions.append(f"Di len {count} buoc")
+                        directions.append(f"Bước {step}: Đi lên {count} bước")
                     elif current_dir == "XUONG":
-                        directions.append(f"Di xuong {count} buoc")
+                        directions.append(f"Bước {step}: Đi xuống {count} bước")
                 else:
                     # Continue in same direction
-                    directions.append(f"Di thang {count} buoc")
+                    directions.append(f"Bước {step}: Đi thẳng {count} bước")
             
             i += count
+            step += 1
         
-        directions.append("Da den noi!!!")
+        directions.append("Bạn đã đến nơi!")
         return directions
     
     def move_user(self, direction):
@@ -659,26 +653,27 @@ class FinalSupermarketFindBot:
                 elif event.type == pygame.KEYDOWN:
                     if self.is_input_mode:
                         if event.key == pygame.K_RETURN:  # Submit input
-                            if self.input_text:  # Only speak if there's text
-                                if self.tts_engine:
-                                    self.tts_engine.say(self.input_text)  # Speak the input text
-                                    self.tts_engine.runAndWait()
+                            # Speak back what the user typed (optional echo)
+                            if self.input_text and self.tts.is_available():
+                                self.tts.speak(self.input_text)
+
+                            # Try to map the typed name to a category key
                             category = self.get_category_by_name(self.input_text)
+
                             if category:
-                                self.find_path_to_product(category)  # This will set and speak directions
-                                if self.tts_engine and self.current_path:  # Ensure path exists before speaking directions
-                                    directions = self.generate_directions()
-                                    for direction in directions:
-                                        self.tts_engine.say(direction)
-                                        self.tts_engine.runAndWait()  # Speak each direction step-by-step
-                                self.input_text = ''
-                                self.is_input_mode = False
+                                # Find the path and, if successful, speak step-by-step directions
+                                self.find_path_to_product(category)
+
+                                if self.tts.is_available() and self.current_path:
+                                    for sentence in self.generate_directions():
+                                        self.tts.speak(sentence)
                             else:
-                                if self.tts_engine:
-                                    self.tts_engine.say("Khong tim thay san pham")
-                                    self.tts_engine.runAndWait()
-                                self.input_text = ''
-                                self.is_input_mode = False
+                                if self.tts.is_available():
+                                    self.tts.speak("Không tìm thấy sản phẩm")
+
+                            # Reset input state
+                            self.input_text = ''
+                            self.is_input_mode = False
                         elif event.key == pygame.K_BACKSPACE:
                             self.input_text = self.input_text[:-1]
                         else:
@@ -686,9 +681,8 @@ class FinalSupermarketFindBot:
                     elif event.key == pygame.K_t:  # Toggle input mode, e.g., press 'T' to start typing
                         self.is_input_mode = True
                         self.input_text = ''
-                        if self.tts_engine:
-                            self.tts_engine.say("Nhap ten san pham")
-                            self.tts_engine.runAndWait()
+                        if self.tts.is_available():
+                            self.tts.speak("Nhập tên sản phẩm")
                     else:
                         key_name = pygame.key.name(event.key)
                         self.handle_keyboard_input(key_name)

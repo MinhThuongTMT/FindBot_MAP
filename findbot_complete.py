@@ -4,6 +4,7 @@ import time
 from supermarket_board import supermarket_layout, PRODUCT_CATEGORIES, get_category_by_key
 from enhanced_pathfinding import EnhancedPathFinder
 from sound_manager import SoundManager
+from tts_manager import TTSManager
 
 # Initialize Pygame
 pygame.init()
@@ -45,6 +46,7 @@ class SupermarketFindBot:
         self.layout = supermarket_layout
         self.pathfinder = EnhancedPathFinder(self.layout)
         self.sound_manager = SoundManager()
+        self.tts = TTSManager()
         
         # Game state
         self.user_pos = (13, 15)  # Starting position near entrance
@@ -379,6 +381,7 @@ class SupermarketFindBot:
             
             self.sound_manager.play_sound('success')
             print(f"Tim thay duong den {info['name']} - Khoang cach: {distance:.1f} buoc")
+            self.tts.speak(f"Đã tìm thấy đường đến {info['name']} - Khoảng cách: {distance:.1f} bước")
         else:
             self.current_path = []
             self.sound_manager.play_sound('error')
