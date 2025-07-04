@@ -4,6 +4,7 @@ import time
 from supermarket_board import supermarket_layout, PRODUCT_CATEGORIES, get_category_by_key, get_shelf_center
 from enhanced_pathfinding import EnhancedPathFinder
 from tts_manager import TTSManager
+from stt_manager import STTManager
 import unicodedata
 
 # Initialize Pygame
@@ -103,6 +104,8 @@ class FinalSupermarketFindBot:
         
         # Text-to-speech subsystem (Vietnamese support)
         self.tts = TTSManager()
+        self.stt = STTManager()
+        self.input_mode = 'text'  # 'text' or 'voice'
         
         # Add variables for text input
         self.input_text = ''  # To store user input
@@ -333,6 +336,7 @@ class FinalSupermarketFindBot:
             "Y,U,I,O,P: Ke 16-20",
             "WASD/Mui ten: Di chuyen",
             "M: Bat/tat am thanh",
+            "V: Nhap giong noi",
             "ESC: Huy tim kiem",
             "",
             "📍 DANH SACH KE HANG:"
@@ -446,6 +450,12 @@ class FinalSupermarketFindBot:
             input_display = self.font_small.render("Nhap: " + self.input_text, True, YELLOW)
             self.screen.blit(input_display, (panel_x + 5, y_offset))
             y_offset += 18
+        
+        # Add mode text
+        y_offset += 10
+        mode_text = f"Che do nhap: {'Giọng nói' if self.input_mode=='voice' else 'Ban phim'}"
+        text = self.font_small.render(mode_text, True, WHITE)
+        self.screen.blit(text, (panel_x + 5, y_offset))
     
     def draw_title_bar(self):
         """Draw the title bar"""
@@ -485,6 +495,37 @@ class FinalSupermarketFindBot:
             self.current_path = []
             self.path_animation_index = 0
             self.sound_manager.play_sound('error')
+        # Voice input is handled directly in the main event loop, not here.
+        elif key == 't' and not self.is_input_mode:
+            self.is_input_mode = True
+            self.input_text = ''
+            if self.tts.is_available():
+                self.tts.speak("Nhập tên sản phẩm")
+        elif key == 'v' and not self.is_input_mode:
+            # Trigger one-shot voice recognition
+            if self.stt.is_available():
+                self.input_mode = 'voice'
+                if self.tts.is_available():
+                    self.tts.speak("Xin nói tên sản phẩm")
+                spoken = self.stt.listen(prompt="Nói tên sản phẩm")
+                if spoken:
+                    if self.tts.is_available():
+                        self.tts.speak(spoken)
+                    category = self.get_category_by_name(spoken)
+                    if category:
+                        self.find_path_to_product(category)
+                        if self.tts.is_available() and self.current_path:
+                            for s in self.generate_directions():
+                                self.tts.speak(s)
+                    else:
+                        if self.tts.is_available():
+                            self.tts.speak("Không tìm thấy sản phẩm")
+                self.input_mode = 'text'
+            else:
+                if self.tts.is_available():
+                    self.tts.speak("Chức năng giọng nói chưa sẵn sàng")
+        else:
+            return False
         
         return False
     
@@ -683,6 +724,29 @@ class FinalSupermarketFindBot:
                         self.input_text = ''
                         if self.tts.is_available():
                             self.tts.speak("Nhập tên sản phẩm")
+                    elif event.key == pygame.K_v and not self.is_input_mode:
+                        # Trigger one-shot voice recognition
+                        if self.stt.is_available():
+                            self.input_mode = 'voice'
+                            if self.tts.is_available():
+                                self.tts.speak("Xin nói tên sản phẩm")
+                            spoken = self.stt.listen(prompt="Nói tên sản phẩm")
+                            if spoken:
+                                if self.tts.is_available():
+                                    self.tts.speak(spoken)
+                                category = self.get_category_by_name(spoken)
+                                if category:
+                                    self.find_path_to_product(category)
+                                    if self.tts.is_available() and self.current_path:
+                                        for s in self.generate_directions():
+                                            self.tts.speak(s)
+                                else:
+                                    if self.tts.is_available():
+                                        self.tts.speak("Không tìm thấy sản phẩm")
+                            self.input_mode = 'text'
+                        else:
+                            if self.tts.is_available():
+                                self.tts.speak("Chức năng giọng nói chưa sẵn sàng")
                     else:
                         key_name = pygame.key.name(event.key)
                         self.handle_keyboard_input(key_name)
