@@ -366,7 +366,7 @@ class SupermarketFindBot:
         info = PRODUCT_CATEGORIES[category]
         product_positions = info['positions']
         
-        result = self.pathfinder.find_nearest_product(self.user_pos, product_positions)
+        result = self.pathfinder.find_nearest_shelf_access(self.user_pos, product_positions)
         
         if result:
             target_pos, path, distance = result

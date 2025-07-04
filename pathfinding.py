@@ -60,7 +60,7 @@ class PathFinder:
                     came_from[neighbor] = current
                     g_score[neighbor] = tentative_g_score
                     f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, goal)
-                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+                    heapq.heappush(open_set, (int(f_score[neighbor]), neighbor))
         
         return None  # No path found
     

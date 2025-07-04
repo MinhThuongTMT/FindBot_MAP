@@ -3,6 +3,7 @@ import math
 import time
 from supermarket_board import supermarket_layout, PRODUCT_CATEGORIES, get_category_by_key, get_shelf_center
 from enhanced_pathfinding import EnhancedPathFinder
+import pyttsx3
 
 # Initialize Pygame
 pygame.init()
@@ -26,6 +27,7 @@ PINK = (255, 192, 203)
 GRAY = (128, 128, 128)
 DARK_GRAY = (64, 64, 64)
 LIGHT_GRAY = (192, 192, 192)
+GOLD = (255, 215, 0)
 
 class SimpleSoundManager:
     """Simplified sound manager"""
@@ -98,6 +100,28 @@ class FinalSupermarketFindBot:
         # Initialize last_direction
         self.last_direction = (0, 0)
         
+        # Initialize TTS
+        try:
+            self.tts_engine = pyttsx3.init()
+            voices = self.tts_engine.getProperty('voices')
+            for voice in voices:
+                if 'vi' in voice.languages or 'Vietnamese' in voice.name:  # Check for Vietnamese voice
+                    self.tts_engine.setProperty('voice', voice.id)
+                    break  # Use the first matching voice
+        except ImportError:
+            print("TTS library not available, install pyttsx3")
+            self.tts_engine = None
+        except Exception as e:
+            print(f"TTS initialization error: {e}")
+            self.tts_engine = None
+        
+        # Add variables for text input
+        self.input_text = ''  # To store user input
+        self.is_input_mode = False  # Flag to toggle input mode
+        
+        # Update the exit position to the back
+        self.exit_pos = (0, 17)  # Set to row 0 (back) and column 17 to mirror the entrance's column
+        
     def draw_board(self):
         """Draw the supermarket layout with black walkways"""
         board_width = WIDTH - 350  # Leave more space for UI panel
@@ -113,19 +137,24 @@ class FinalSupermarketFindBot:
                 cell = self.layout[i][j]
                 
                 # Draw cell background
-                if cell == 0:  # Walkway - BLACK
-                    pygame.draw.rect(self.screen, BLACK, (x, y, cell_width, cell_height))
+                if cell == 0:  # Walkway
+                    for i in range(cell_height):
+                        color = [max(0, c - i * 5) for c in BLACK]  # Darker gradient
+                        pygame.draw.line(self.screen, color, (x, y + i), (x + cell_width, y + i), 1)
                 elif cell == 1:  # Product shelf
-                    pygame.draw.rect(self.screen, LIGHT_GRAY, (x, y, cell_width, cell_height))
+                    for i in range(cell_height):
+                        color = [min(255, c + i * 10) for c in LIGHT_GRAY]  # Lighter gradient
+                        pygame.draw.line(self.screen, color, (x, y + i), (x + cell_width, y + i), 1)
                 elif cell == 2:  # Special product
                     pygame.draw.rect(self.screen, PURPLE, (x, y, cell_width, cell_height))
-                elif cell == 9:  # Entrance/Exit
-                    pygame.draw.rect(self.screen, WHITE, (x, y, cell_width, cell_height))
                 elif cell >= 3:  # Walls
                     pygame.draw.rect(self.screen, DARK_GRAY, (x, y, cell_width, cell_height))
                 
                 # Draw grid lines
                 pygame.draw.rect(self.screen, GRAY, (x, y, cell_width, cell_height), 1)
+        
+        # Ensure the exit is drawn at the new position
+        pygame.draw.rect(self.screen, WHITE, (WIDTH - 350, 0, 350, 50), 2)
     
     def draw_products(self):
         """Draw product categories with different colors"""
@@ -152,6 +181,9 @@ class FinalSupermarketFindBot:
                     shine_color = tuple(min(255, c + 30) for c in color)
                     pygame.draw.rect(self.screen, shine_color, (x + 1, y + 1, cell_width - 2, 2))
                     
+                    # Draw subtle glow effect
+                    pygame.draw.rect(self.screen, tuple(min(255, c + 20) for c in shine_color), (x + cell_width // 3, y + 1, cell_width // 3, cell_height // 3), 0)
+                    
                     # Draw shelf number on center of shelf
                     if i == len(positions) // 2:  # Center position
                         text = self.font_small.render(str(shelf_id), True, WHITE)
@@ -173,21 +205,26 @@ class FinalSupermarketFindBot:
         
         x = self.user_pos[1] * cell_width + cell_width // 2
         y = self.user_pos[0] * cell_height + cell_height // 2 + 25
+
         
         # Animated user icon
         pulse = math.sin(self.animation_time * 5) * 2
         radius = 8 + pulse
+
         
         # Draw shadow
         pygame.draw.circle(self.screen, DARK_GRAY, (x + 2, y + 2), int(radius))
+
         
         # Draw user (FindBot)
         pygame.draw.circle(self.screen, RED, (x, y), int(radius))
         pygame.draw.circle(self.screen, WHITE, (x, y), int(radius), 2)
+
         
         # Draw "FB" text for FindBot
         fb_text = self.font_small.render("FB", True, WHITE)
         fb_rect = fb_text.get_rect(center=(x, y))
+
         self.screen.blit(fb_text, fb_rect)
         
         # Draw direction indicator
@@ -257,18 +294,31 @@ class FinalSupermarketFindBot:
         cell_width = board_width // len(self.layout[0])
         cell_height = board_height // len(self.layout)
         
-        # Draw entrance text
-        entrance_text = self.font_medium.render("LOI VAO", True, BLACK)
-        entrance_x = 16 * cell_width + cell_width // 2
-        entrance_y = 27 * cell_height + 25
-        entrance_rect = entrance_text.get_rect(center=(entrance_x, entrance_y))
+        center_col = 17  # Main aisle column
+        center_x = center_col * cell_width + cell_width // 2
         
-        # Background for text
-        bg_rect = pygame.Rect(entrance_rect.x - 5, entrance_rect.y - 3, entrance_rect.width + 10, entrance_rect.height + 6)
-        pygame.draw.rect(self.screen, WHITE, bg_rect)
-        pygame.draw.rect(self.screen, BLACK, bg_rect, 2)
+        rect_width = 3 * cell_width  # 3 cells wide
+        rect_height = cell_height  # 1 cell high
+        rect_x = center_x - (rect_width // 2)  # Center horizontally in the aisle
+        rect_y = (len(self.layout) - 1) * cell_height + 25  # Position at the bottom row
         
-        self.screen.blit(entrance_text, entrance_rect)
+        gradient_surface = pygame.Surface((rect_width, rect_height))
+        gradient_surface.fill(DARK_GRAY)
+        for i in range(rect_height):
+            color = [min(255, c + i * 5) for c in WHITE]
+            pygame.draw.line(gradient_surface, color, (0, i), (rect_width, i), 1)
+        
+        self.screen.blit(gradient_surface, (rect_x, rect_y))
+        
+        entrance_text = self.font_medium.render('LOI VAO', True, BLACK)
+        ent_text_rect = entrance_text.get_rect(center=(center_x, rect_y + rect_height // 2))
+        self.screen.blit(entrance_text, ent_text_rect)
+        
+        for glow_radius in range(5, 0, -1):
+            glow_color = tuple(max(0, c - 20 * glow_radius) for c in GOLD)
+            pygame.draw.rect(self.screen, glow_color, (rect_x - glow_radius, rect_y - glow_radius, rect_width + glow_radius * 2, rect_height + glow_radius * 2), 1)
+        
+        pygame.draw.rect(self.screen, GOLD, (rect_x, rect_y, rect_width, rect_height), 4)
     
     def draw_ui_panel(self):
         """Draw the UI panel with controls and information"""
@@ -400,6 +450,12 @@ class FinalSupermarketFindBot:
             no_path_text = "Chon ke hang de xem huong dan"
             text = self.font_small.render(no_path_text, True, GRAY)
             self.screen.blit(text, (panel_x + 5, y_offset))
+        
+        # Input mode display
+        if self.is_input_mode:
+            input_display = self.font_small.render("Nhap: " + self.input_text, True, YELLOW)
+            self.screen.blit(input_display, (panel_x + 5, y_offset))
+            y_offset += 18
     
     def draw_title_bar(self):
         """Draw the title bar"""
@@ -463,6 +519,12 @@ class FinalSupermarketFindBot:
             
             self.sound_manager.play_sound('success')
             print(f"Tim thay duong den Ke {info['shelf_id']} - {info['name']} - Khoang cach: {distance:.1f} buoc")
+            
+            if self.tts_engine:
+                directions = self.generate_directions()
+                for direction in directions:
+                    self.tts_engine.say(direction)
+                    self.tts_engine.runAndWait()
         else:
             self.current_path = []
             self.sound_manager.play_sound('error')
@@ -595,14 +657,47 @@ class FinalSupermarketFindBot:
                     running = False
                 
                 elif event.type == pygame.KEYDOWN:
-                    key_name = pygame.key.name(event.key)
-                    self.handle_keyboard_input(key_name)
+                    if self.is_input_mode:
+                        if event.key == pygame.K_RETURN:  # Submit input
+                            if self.input_text:  # Only speak if there's text
+                                if self.tts_engine:
+                                    self.tts_engine.say(self.input_text)  # Speak the input text
+                                    self.tts_engine.runAndWait()
+                            category = self.get_category_by_name(self.input_text)
+                            if category:
+                                self.find_path_to_product(category)  # This will set and speak directions
+                                if self.tts_engine and self.current_path:  # Ensure path exists before speaking directions
+                                    directions = self.generate_directions()
+                                    for direction in directions:
+                                        self.tts_engine.say(direction)
+                                        self.tts_engine.runAndWait()  # Speak each direction step-by-step
+                                self.input_text = ''
+                                self.is_input_mode = False
+                            else:
+                                if self.tts_engine:
+                                    self.tts_engine.say("Khong tim thay san pham")
+                                    self.tts_engine.runAndWait()
+                                self.input_text = ''
+                                self.is_input_mode = False
+                        elif event.key == pygame.K_BACKSPACE:
+                            self.input_text = self.input_text[:-1]
+                        else:
+                            self.input_text += event.unicode  # Add typed characters
+                    elif event.key == pygame.K_t:  # Toggle input mode, e.g., press 'T' to start typing
+                        self.is_input_mode = True
+                        self.input_text = ''
+                        if self.tts_engine:
+                            self.tts_engine.say("Nhap ten san pham")
+                            self.tts_engine.runAndWait()
+                    else:
+                        key_name = pygame.key.name(event.key)
+                        self.handle_keyboard_input(key_name)
             
             # Update animations
             self.update_animations(dt)
             
             # Draw everything
-            self.screen.fill(WHITE)
+            self.screen.fill(BLACK)
             self.draw_title_bar()
             self.draw_board()
             self.draw_products()
@@ -616,6 +711,12 @@ class FinalSupermarketFindBot:
         
         print("👋 Cam on ban da su dung FindBot!")
         pygame.quit()
+
+    def get_category_by_name(self, name):
+        for category, info in PRODUCT_CATEGORIES.items():
+            if name.lower() in info['name'].lower():
+                return category
+        return None
 
 if __name__ == "__main__":
     try:

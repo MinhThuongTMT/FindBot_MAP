@@ -1,5 +1,8 @@
 import pygame
 import os
+import math
+import array
+import numpy as np
 
 class SoundManager:
     def __init__(self):
@@ -40,12 +43,11 @@ class SoundManager:
             wave = 4096 * math.sin(frequency * 2 * math.pi * time)
             arr.append([int(wave), int(wave)])
         
-        sound = pygame.sndarray.make_sound(pygame.array.array('i', arr))
+        sound = pygame.sndarray.make_sound(np.array(arr, dtype=np.int16))
         self.sounds[name] = sound
     
     def create_success_sound(self):
         """Create a success chord sound"""
-        import math
         sample_rate = 22050
         duration = 0.3
         frames = int(duration * sample_rate)
@@ -66,7 +68,7 @@ class SoundManager:
             
             arr.append([int(wave), int(wave)])
         
-        sound = pygame.sndarray.make_sound(pygame.array.array('i', arr))
+        sound = pygame.sndarray.make_sound(np.array(arr, dtype=np.int16))
         self.sounds['success'] = sound
     
     def play_sound(self, sound_name: str):
