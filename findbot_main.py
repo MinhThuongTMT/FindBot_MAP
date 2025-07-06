@@ -114,6 +114,10 @@ class FinalSupermarketFindBot:
         # Update the exit position to the back
         self.exit_pos = (0, 17)  # Set to row 0 (back) and column 17 to mirror the entrance's column
         
+        # Status banner (transient messages for voice / info)
+        self.status_message: str = ""
+        self.status_timer: float = 0.0  # seconds remaining to show message
+        
     def draw_board(self):
         """Draw the supermarket layout with black walkways"""
         board_width = WIDTH - 350  # Leave more space for UI panel
@@ -327,26 +331,61 @@ class FinalSupermarketFindBot:
         title = self.font_large.render("🤖 FINDBOT - NGON LUA PTIT", True, WHITE)
         self.screen.blit(title, (panel_x + 10, y_offset))
         y_offset += 35
-        
-        # Instructions
-        instructions = [
-            "🎮 DIEU KHIEN:",
-            "So 1-9,0: Ke 1-10",
-            "Q,W,E,R,T: Ke 11-15", 
-            "Y,U,I,O,P: Ke 16-20",
-            "WASD/Mui ten: Di chuyen",
-            "M: Bat/tat am thanh",
-            "V: Nhap giong noi",
-            "ESC: Huy tim kiem",
-            "",
-            "📍 DANH SACH KE HANG:"
-        ]
-        
-        for instruction in instructions:
-            text = self.font_small.render(instruction, True, WHITE)
-            self.screen.blit(text, (panel_x + 5, y_offset))
+
+        # --------------------------------------------------------------
+        # Input TEXT box (when typing) or transient status banner
+        # --------------------------------------------------------------
+        if self.is_input_mode:
+            # Draw text input box
+            box_rect = pygame.Rect(panel_x + 5, y_offset, panel_width - 10, 28)
+            pygame.draw.rect(self.screen, WHITE, box_rect, border_radius=4)
+            pygame.draw.rect(self.screen, YELLOW, box_rect, 2, border_radius=4)
+
+            placeholder = "Nhap ten san pham..." if not self.input_text else self.input_text
+            text_surface = self.font_small.render(placeholder, True, BLACK)
+            self.screen.blit(text_surface, (box_rect.x + 6, box_rect.y + 6))
+
+            y_offset = box_rect.bottom + 10
+        elif self.status_message:
+            msg_surf = self.font_small.render(self.status_message, True, YELLOW)
+            self.screen.blit(msg_surf, (panel_x + 5, y_offset))
+            y_offset += 24
+
+        # --- Navigation directions moved up; control instructions removed ---
+        directions_header = self.font_medium.render("🧭 HUONG DAN DI:", True, WHITE)
+        self.screen.blit(directions_header, (panel_x + 5, y_offset))
+        y_offset += 22
+
+        if self.current_path and len(self.current_path) > 1:
+            directions_full = self.generate_directions()
+            directions_display = [self._strip_accents(d) for d in directions_full]
+            for i, direction in enumerate(directions_display[:6]):  # show max first 6 steps
+                step_text = f"{i + 1}. {direction}"
+                if len(step_text) > 35:
+                    step_text = step_text[:32] + "..."
+                color = GREEN if i == 0 else WHITE
+                text_surface = self.font_small.render(step_text, True, color)
+                self.screen.blit(text_surface, (panel_x + 5, y_offset))
+                y_offset += 16
+            if len(directions_display) > 6:
+                more_text = f"... va {len(directions_display) - 6} buoc nua"
+                text_surface = self.font_small.render(more_text, True, GRAY)
+                self.screen.blit(text_surface, (panel_x + 5, y_offset))
+                y_offset += 16
+        else:
+            no_path_text = "Chon ke hang de xem huong dan"
+            text_surface = self.font_small.render(no_path_text, True, GRAY)
+            self.screen.blit(text_surface, (panel_x + 5, y_offset))
             y_offset += 18
-        
+
+        # Spacing before category list
+        y_offset += 10
+
+        # Category list header (since instruction block removed)
+        cat_header = self.font_medium.render("📍 DANH SACH KE HANG:", True, WHITE)
+        self.screen.blit(cat_header, (panel_x + 5, y_offset))
+        y_offset += 22
+
         # Product categories - display in compact format
         shelf_count = 0
         for category, info in PRODUCT_CATEGORIES.items():
@@ -417,45 +456,21 @@ class FinalSupermarketFindBot:
             text = self.font_small.render(avg_text, True, WHITE)
             self.screen.blit(text, (panel_x + 5, y_offset))
         
-        # Directions instead of map info
-        y_offset += 30
-        directions_text = self.font_medium.render("🧭 HUONG DAN DI:", True, WHITE)
-        self.screen.blit(directions_text, (panel_x + 5, y_offset))
-        y_offset += 22
-
-        if self.current_path and len(self.current_path) > 1:
-            directions_full = self.generate_directions()
-            directions_display = [self._strip_accents(d) for d in directions_full]
-            for i, direction in enumerate(directions_display[:6]):  # Show max 6 steps
-                step_text = f"{i+1}. {direction}"
-                if len(step_text) > 35:
-                    step_text = step_text[:32] + "..."
-                
-                color = GREEN if i == 0 else WHITE  # Highlight current step
-                text = self.font_small.render(step_text, True, color)
-                self.screen.blit(text, (panel_x + 5, y_offset))
-                y_offset += 16
-            
-            if len(directions_display) > 6:
-                more_text = f"... va {len(directions_display) - 6} buoc nua"
-                text = self.font_small.render(more_text, True, GRAY)
-                self.screen.blit(text, (panel_x + 5, y_offset))
-        else:
-            no_path_text = "Chon ke hang de xem huong dan"
-            text = self.font_small.render(no_path_text, True, GRAY)
-            self.screen.blit(text, (panel_x + 5, y_offset))
+        # Stylish current mode badge
+        badge_color = GREEN if self.input_mode == 'voice' else BLUE
+        badge_text = "🎙️  GIONG NOI" if self.input_mode == 'voice' else "⌨️  BAN PHIM"
+        badge_surf = self.font_medium.render(badge_text, True, BLACK)
+        badge_rect = badge_surf.get_rect()
+        badge_padding = 6
+        badge_bg_rect = pygame.Rect(panel_x + 5, y_offset + 10, badge_rect.width + badge_padding*2, badge_rect.height + badge_padding*2)
+        # Background with rounded corners
+        pygame.draw.rect(self.screen, badge_color, badge_bg_rect, border_radius=8)
+        # Outline
+        pygame.draw.rect(self.screen, WHITE, badge_bg_rect, 2, border_radius=8)
+        # Text inside
+        self.screen.blit(badge_surf, (badge_bg_rect.x + badge_padding, badge_bg_rect.y + badge_padding))
         
-        # Input mode display
-        if self.is_input_mode:
-            input_display = self.font_small.render("Nhap: " + self.input_text, True, YELLOW)
-            self.screen.blit(input_display, (panel_x + 5, y_offset))
-            y_offset += 18
-        
-        # Add mode text
-        y_offset += 10
-        mode_text = f"Che do nhap: {'Giọng nói' if self.input_mode=='voice' else 'Ban phim'}"
-        text = self.font_small.render(mode_text, True, WHITE)
-        self.screen.blit(text, (panel_x + 5, y_offset))
+        y_offset = badge_bg_rect.bottom + 10
     
     def draw_title_bar(self):
         """Draw the title bar"""
@@ -505,9 +520,14 @@ class FinalSupermarketFindBot:
             # Trigger one-shot voice recognition
             if self.stt.is_available():
                 self.input_mode = 'voice'
+                self.status_message = "🎙 Dang nghe..."
+                self.status_timer = 5
                 if self.tts.is_available():
                     self.tts.speak("Xin nói tên sản phẩm")
                 spoken = self.stt.listen(prompt="Nói tên sản phẩm")
+                # Update status after listening (overwrite with result)
+                self.status_message = f"✔ Da nhan: {spoken}" if spoken else "Khong nghe thay, thu lai!"
+                self.status_timer = 3
                 if spoken:
                     if self.tts.is_available():
                         self.tts.speak(spoken)
@@ -522,8 +542,10 @@ class FinalSupermarketFindBot:
                             self.tts.speak("Không tìm thấy sản phẩm")
                 self.input_mode = 'text'
             else:
+                self.status_message = "Voice khong kha dung!"
+                self.status_timer = 3
                 if self.tts.is_available():
-                    self.tts.speak("Chức năng giọng nói chưa sẵn sàng")
+                    self.tts.speak("Chuc nang giong noi chua san sang")
         else:
             return False
         
@@ -610,18 +632,18 @@ class FinalSupermarketFindBot:
                 elif current_dir == "XUONG":
                     directions.append(f"Bước {step}: Đi thẳng {count} bước")
                 elif current_dir == "TRAI":
-                    directions.append(f"Bước {step}: Re trai {count} bước")
+                    directions.append(f"Bước {step}: Rẽ trái {count} bước")
                 elif current_dir == "PHAI":
-                    directions.append(f"Bước {step}: Re phai {count} bước")
+                    directions.append(f"Bước {step}: Rẽ phải {count} bước")
             else:
                 # Check if direction changed (turn)
                 prev_dir = path_directions[i - 1]
                 if current_dir != prev_dir:
                     # This is a turn
                     if current_dir == "TRAI":
-                        directions.append(f"Bước {step}: Re trai {count} bước")
+                        directions.append(f"Bước {step}: Rẽ trái {count} bước")
                     elif current_dir == "PHAI":
-                        directions.append(f"Bước {step}: Re phai {count} bước")
+                        directions.append(f"Bước {step}: Rẽ phải {count} bước")
                     elif current_dir == "LEN":
                         directions.append(f"Bước {step}: Đi lên {count} bước")
                     elif current_dir == "XUONG":
@@ -686,6 +708,12 @@ class FinalSupermarketFindBot:
             dt = current_time - last_time
             last_time = current_time
             
+            # Update status banner timer
+            if self.status_timer > 0:
+                self.status_timer -= dt
+                if self.status_timer <= 0:
+                    self.status_message = ""
+
             # Handle events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -728,9 +756,14 @@ class FinalSupermarketFindBot:
                         # Trigger one-shot voice recognition
                         if self.stt.is_available():
                             self.input_mode = 'voice'
+                            self.status_message = "🎙 Dang nghe..."
+                            self.status_timer = 5
                             if self.tts.is_available():
                                 self.tts.speak("Xin nói tên sản phẩm")
                             spoken = self.stt.listen(prompt="Nói tên sản phẩm")
+                            # Update status after listening (overwrite with result)
+                            self.status_message = f"✔ Da nhan: {spoken}" if spoken else "Khong nghe thay, thu lai!"
+                            self.status_timer = 3
                             if spoken:
                                 if self.tts.is_available():
                                     self.tts.speak(spoken)
@@ -745,8 +778,10 @@ class FinalSupermarketFindBot:
                                         self.tts.speak("Không tìm thấy sản phẩm")
                             self.input_mode = 'text'
                         else:
+                            self.status_message = "Voice khong kha dung!"
+                            self.status_timer = 3
                             if self.tts.is_available():
-                                self.tts.speak("Chức năng giọng nói chưa sẵn sàng")
+                                self.tts.speak("Chuc nang giong noi chua san sang")
                     else:
                         key_name = pygame.key.name(event.key)
                         self.handle_keyboard_input(key_name)
@@ -771,9 +806,27 @@ class FinalSupermarketFindBot:
         pygame.quit()
 
     def get_category_by_name(self, name):
+        """Map a spoken/text name to category key, ignoring Vietnamese diacritics
+        and case.  Returns *None* if no suitable category found."""
+
+        if not name:
+            return None
+
+        query = self._strip_accents(name).lower()
+
+        # Direct substring match (accent-insensitive)
         for category, info in PRODUCT_CATEGORIES.items():
-            if name.lower() in info['name'].lower():
+            target = self._strip_accents(info['name']).lower()
+            if query in target or target in query:
                 return category
+
+        # Fall-back: try matching by individual words
+        query_tokens = query.split()
+        for category, info in PRODUCT_CATEGORIES.items():
+            target_tokens = self._strip_accents(info['name']).lower().split()
+            if any(tok in target_tokens for tok in query_tokens):
+                return category
+
         return None
 
 if __name__ == "__main__":
