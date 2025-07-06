@@ -129,6 +129,7 @@ Pull request va issue rat duoc hoan nghenh!
 
 ---
 
-## 9. Giay phep
+## 💡 Nếu bạn thích dự án này, hãy ⭐️ trên GitHub nhé! 
 
-Ma nguon mo theo giay phep MIT. Xem file `LICENSE` de biet chi tiet.
+### 📩 Liên hệ:  
+[tranminhthuong08082003@gmail.com](mailto:tranminhthuong08082003@gmail.com)
